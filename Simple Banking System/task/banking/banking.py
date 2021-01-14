@@ -20,7 +20,7 @@ class CreditCard:
         self.balance = balance
 
 
-class CreditCardGenerator:
+class CreditCardManager:
     IIN = '400000'
 
     @classmethod
@@ -41,7 +41,7 @@ class CreditCardGenerator:
     @staticmethod
     def _get_checksum(code: str) -> int:
         """
-        Counts checksum for card number
+        Counts checksum for card number using Lunh algorithm
         :param code:
         :return:
         """
@@ -77,7 +77,6 @@ class CardStorage:
         cursor.close()
         self.db_connection.commit()
 
-
     def get_card(self, number, pin) -> Optional[CreditCard]:
         sql = f"""
         SELECT *
@@ -90,8 +89,6 @@ class CardStorage:
         cursor.close()
         return CreditCard(card[1], card[2], card[3]) if card else None
 
-
-
     def get_all_cards(self) -> List[CreditCard]:
         sql = f"SELECT * FROM {self.card_table_name}"
         cursor: Cursor = self.db_connection.cursor()
@@ -100,20 +97,18 @@ class CardStorage:
 
 
 class BankApp:
-    accounts: List[CreditCard] = []
 
     def __init__(self, card_storage: CardStorage):
         self.card_storage = card_storage
 
     def create_card(self) -> CreditCard:
-        card = CreditCardGenerator().create_credit_card()
+        card = CreditCardManager().create_credit_card()
         print('Your card has been created')
         print('Your card number:')
         print(card.number)
         print('Your card PIN:')
         print(card.pin)
         self.card_storage.add_card(card)
-        # self.accounts.append(card)
         return card
 
     def login(self, card_number: str, pin: str) -> CreditCard:
@@ -123,46 +118,57 @@ class BankApp:
             raise WrongCredentialsError
         return card
 
-
-card_storage = CardStorage(db.connection, db.card_table_name)
-bank_app = BankApp(card_storage)
-
-while True:
-    print('1. Create an account')
-    print('2. Log into account')
-    print('0. Exit')
-
-    decision = int(input())
-
-    if decision == 1:
-        card = bank_app.create_card()
-
-    if decision == 2:
-        card_number = input('Enter your card number:')
-        pin = input('Enter your PIN:')
-        try:
-            card = bank_app.login(card_number, pin)
-        except WrongCredentialsError:
-            continue
-        print('You have successfully logged in!')
+    def main_menu(self):
 
         while True:
+            print('1. Create an account')
+            print('2. Log into account')
+            print('0. Exit')
+
+            decision = int(input())
+
+            if decision == 1:
+                card = bank_app.create_card()
+
+            if decision == 2:
+                card_number = input('Enter your card number:')
+                pin = input('Enter your PIN:')
+                try:
+                    card = bank_app.login(card_number, pin)
+                except WrongCredentialsError:
+                    continue
+                print('You have successfully logged in!')
+
+                self.user_menu()
+
+            if decision == 0:
+                print('Bye!')
+                exit()
+
+    def user_menu(self):
+        while True:
             print('1. Balance')
-            print('2. Log out')
+            print('2. Add income')
+            print('3. Do transfer')
+            print('4. Close account')
+            print('5. Log out')
             print('0. Exit')
 
             decision = int(input())
 
             if decision == 0:
-                break
+                print('Bye!')
+                exit()
 
             if decision == 1:
                 print(f'Balance: {card.balance}')
 
-            if decision == 2:
+            if decision == 5:
                 print('You have successfully logged out!')
                 break
 
-    if decision == 0:
-        print('Bye!')
-        break
+
+card_storage = CardStorage(db.connection, db.card_table_name)
+bank_app = BankApp(card_storage)
+
+bank_app.main_menu()
