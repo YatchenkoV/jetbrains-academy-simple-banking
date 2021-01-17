@@ -1,0 +1,2 @@
+1. Refactor user menu, split code
+2. Refactor getting current balance
