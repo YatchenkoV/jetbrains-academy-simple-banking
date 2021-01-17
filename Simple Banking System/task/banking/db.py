@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from sqlite3 import connect, Cursor, Connection
+from typing import Optional
+from card_manager import CreditCardManager
 
 card_table_name = 'card'
 
@@ -23,8 +25,12 @@ class SQLiteDBHelper:
         self.cursor.execute(create_table_sql)
         self.connection.commit()
 
-    def execute_query(self, query, args):
+    def execute_query(self, query, args=tuple()):
         self.cursor.execute(query, args)
+        self.connection.commit()
+
+    def execute_multiple(self, query):
+        self.cursor.executescript(query)
         self.connection.commit()
 
     def delete_item(self, table_name, iid):
@@ -44,7 +50,8 @@ class SQLiteDBHelper:
 @dataclass
 class CreditCard:
 
-    def __init__(self, number, pin, balance):
+    def __init__(self, card_id: int, number: str, pin: str, balance: int):
+        self.id = card_id
         self.number = number
         self.pin = pin
         self.balance = balance
@@ -55,19 +62,26 @@ class CardsModel:
     def __init__(self, db_manager: SQLiteDBHelper):
         self.db_manager = db_manager
 
-    def add_card(self, card: CreditCard):
+    def add_card(self) -> CreditCard:
+        card_number, pin = CreditCardManager.generate_credit_card()
         query = f"INSERT INTO {card_table_name} (number, pin, balance) VALUES (?, ?, ?)"
-        args = (card.number, card.pin, card.balance)
-        self.db_manager.execute_query(query, args)
+        args = (card_number, pin, 0)
+        res = self.db_manager.execute_query(query, args)
+        return self.get_card(card_number, pin)
 
-    def delete_card(self, iid):
-        self.db_manager.delete_item(card_table_name, iid)
+    def delete_card(self, card: CreditCard):
+        self.db_manager.delete_item(card_table_name, card.id)
 
-    def get_card(self, number, pin) -> tuple:
-        query = f"SELECT number, pin, balance  FROM {card_table_name} WHERE number = (?) AND pin = (?)"
+    def get_card(self, number, pin) -> Optional[CreditCard]:
+        query = f"SELECT id, number, pin, balance  FROM {card_table_name} WHERE number = (?) AND pin = (?)"
         args = (number, pin)
         card = self.db_manager.get_item(query, args)
-        return card
+        return CreditCard(*card) if card else None
+
+    def check_card_existence(self, number) -> bool:
+        query = f"SELECT number FROM {card_table_name} WHERE number = (?)"
+        args = (number,)
+        return self.db_manager.get_item(query, args) is not None
 
     def add_income(self, card_number, amount):
         query = f"""
@@ -77,6 +91,17 @@ class CardsModel:
         """
         args = (amount, card_number)
         self.db_manager.execute_query(query, args)
+
+    def send_money(self, sender_card: CreditCard, recipient_card_number: str, amount):
+        query = f"""
+        UPDATE {card_table_name}
+        SET balance = balance - {amount}
+        WHERE number = {sender_card.number} AND pin = {sender_card.pin};
+        UPDATE {card_table_name}
+        SET balance = balance + {amount}
+        WHERE number = {recipient_card_number};
+        """
+        self.db_manager.execute_multiple(query)
 
     def get_all_cards(self):
         sql = f"SELECT * FROM {card_table_name}"

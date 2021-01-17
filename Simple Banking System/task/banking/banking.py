@@ -1,6 +1,4 @@
-import random
-import string
-from typing import List, Optional
+from card_manager import CreditCardManager
 from db import CreditCard, CardsModel, SQLiteDBHelper
 
 
@@ -8,82 +6,22 @@ class WrongCredentialsError(Exception):
     pass
 
 
-class CreditCardManager:
-    IIN = '400000'
-
-    @classmethod
-    def create_credit_card(cls):
-        return CreditCard(number=cls._generate_card_number(),
-                          pin=cls._generate_pin(),
-                          balance=0)
-
-    @staticmethod
-    def _generate_pin() -> str:
-        return ''.join(random.choices(string.digits, k=4))
-
-    @classmethod
-    def _generate_card_number(cls) -> str:
-        generated_number = cls.IIN + ''.join(random.choices(string.digits, k=9))
-        return generated_number + str(cls._get_checksum(generated_number))
-
-    @staticmethod
-    def _get_checksum(code: str) -> int:
-        """
-        Counts checksum for card number using Lunh algorithm
-        :param code:
-        :return:
-        """
-        total = 0
-
-        for index, digit in enumerate(code):
-            digit = int(digit)
-            if (index + 1) % 2 != 0:
-                digit *= 2
-                if digit > 9:
-                    digit -= 9
-            total += digit
-
-        checksum = 10 - total % 10
-
-        return checksum if checksum != 10 else 0
-
-
-class CardStorage:
+class BankApp:
 
     def __init__(self, cards_model: CardsModel):
         self.cards_model = cards_model
 
-    def add_card(self, card: CreditCard):
-        self.cards_model.add_card(card)
-
-    def get_card(self, number, pin) -> Optional[CreditCard]:
-        card = self.cards_model.get_card(number, pin)
-        return CreditCard(*card) if card else None
-
-    def add_income(self, number: int, amount: int):
-        self.cards_model.add_income(number, amount)
-
-    def get_all_cards(self) -> List[tuple]:
-        return self.cards_model.get_all_cards()
-
-
-class BankApp:
-
-    def __init__(self, card_storage: CardStorage):
-        self.card_storage = card_storage
-
     def create_card(self) -> CreditCard:
-        card = CreditCardManager().create_credit_card()
+        card = self.cards_model.add_card()
         print('Your card has been created')
         print('Your card number:')
         print(card.number)
         print('Your card PIN:')
         print(card.pin)
-        self.card_storage.add_card(card)
         return card
 
     def login(self, card_number: str, pin: str) -> CreditCard:
-        card = self.card_storage.get_card(card_number, pin)
+        card = self.cards_model.get_card(card_number, pin)
         if not card:
             print('Wrong card number or PIN!')
             raise WrongCredentialsError
@@ -116,7 +54,7 @@ class BankApp:
                 print('Bye!')
                 exit()
 
-    def user_menu(self, card):
+    def user_menu(self, card: CreditCard):
         while True:
             print('1. Balance')
             print('2. Add income')
@@ -132,24 +70,50 @@ class BankApp:
                 exit()
 
             if decision == 1:
-                balance = self.card_storage.get_card(card.number, card.pin).balance
+                balance = self.cards_model.get_card(card.number, card.pin).balance
                 print(f'Balance: {balance}')
 
             if decision == 2:
                 print("Enter income:")
                 income = int(input())
-                self.card_storage.add_income(card.number, income)
+                self.cards_model.add_income(card.number, income)
                 print("Income was added!")
+
+            if decision == 3:
+                print("Transfer")
+                print("Enter card number")
+                card_number = input()
+
+                if not CreditCardManager.check_card_number_validity(card_number):
+                    print('Probably you made a mistake in the card number. Please try again!')
+                    continue
+
+                if not self.cards_model.check_card_existence(card_number):
+                    print('Such a card does not exist.')
+                    continue
+
+                print('Enter how much money you want to transfer:')
+                amount = int(input())
+
+                if self.cards_model.get_card(card.number, card.pin).balance < amount:
+                    print('Not enough money!')
+                    continue
+
+                self.cards_model.send_money(card, card_number, amount)
+
+                print('Success!')
+
+            if decision == 4:
+                self.cards_model.delete_card(card)
+                print('The account has been closed!')
+                break
 
             if decision == 5:
                 print('You have successfully logged out!')
                 break
 
-
 db_manager = SQLiteDBHelper("card.s3db")
 cards_model = CardsModel(db_manager)
-
-card_storage = CardStorage(cards_model)
-bank_app = BankApp(card_storage)
+bank_app = BankApp(cards_model)
 
 bank_app.main_menu()
