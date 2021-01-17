@@ -1,23 +1,14 @@
 import random
 import string
-from dataclasses import dataclass
-from sqlite3 import Connection, Cursor
 from typing import List, Optional
 
 import db
+from db import CreditCard, CardsModel, SQLiteDBHelper
 
 
 class WrongCredentialsError(Exception):
     pass
 
-
-@dataclass
-class CreditCard:
-
-    def __init__(self, number, pin, balance):
-        self.number = number
-        self.pin = pin
-        self.balance = balance
 
 
 class CreditCardManager:
@@ -63,37 +54,19 @@ class CreditCardManager:
 class CardStorage:
     cards = 0
 
-    def __init__(self, db_connection: Connection, card_table_name: str):
-        self.db_connection: Connection = db_connection
+    def __init__(self, cards_model: CardsModel, card_table_name: str):
+        self.cards_model = cards_model
         self.card_table_name = card_table_name
 
     def add_card(self, card: CreditCard):
-        self.cards += 1
-        sql = f"""INSERT INTO {self.card_table_name} (number, pin, balance)
-         VALUES ({card.number}, {card.pin}, {card.balance})"""
-
-        cursor: Cursor = self.db_connection.cursor()
-        cursor.execute(sql)
-        cursor.close()
-        self.db_connection.commit()
+        self.cards_model.add_card(card)
 
     def get_card(self, number, pin) -> Optional[CreditCard]:
-        sql = f"""
-        SELECT *
-        FROM {self.card_table_name}
-        WHERE {self.card_table_name}.number = {number}
-        AND {self.card_table_name}.pin = {pin}"""
-        cursor: Cursor = self.db_connection.cursor()
-        cursor.execute(sql)
-        card = cursor.fetchone()
-        cursor.close()
+        card = self.cards_model.get_card(number, pin)
         return CreditCard(card[1], card[2], card[3]) if card else None
 
     def get_all_cards(self) -> List[CreditCard]:
-        sql = f"SELECT * FROM {self.card_table_name}"
-        cursor: Cursor = self.db_connection.cursor()
-        cursor.execute(sql)
-        return [CreditCard(card[1], card[2], card[3]) for card in cursor.fetchone()]
+        return [CreditCard(card[1], card[2], card[3]) for card in self.cards_model.get_all_cards()]
 
 
 class BankApp:
@@ -168,7 +141,11 @@ class BankApp:
                 break
 
 
-card_storage = CardStorage(db.connection, db.card_table_name)
+
+db_manager = SQLiteDBHelper("card.s3db")
+cards_model = CardsModel(db_manager)
+
+card_storage = CardStorage(cards_model, db.card_table_name)
 bank_app = BankApp(card_storage)
 
 bank_app.main_menu()
